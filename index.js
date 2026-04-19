@@ -73,7 +73,7 @@ setInterval(() => {
 let phoneNumber = "911234567890"
 let owner = JSON.parse(fs.readFileSync('./data/owner.json'))
 
-global.botname = "KNIGHT BOT"
+global.botname = "RiBot(Zelvora)"
 global.themeemoji = "•"
 const pairingCode = !!phoneNumber || process.argv.includes("--pairing-code")
 const useMobile = process.argv.includes("--mobile")
@@ -129,18 +129,31 @@ async function startXeonBotInc() {
         try {
             const mek = chatUpdate.messages[0]
             if (!mek.message) return
+            const jid = mek.key.remoteJid
+
+            // ✅ Fix #1: Status broadcast dicek PERTAMA sebelum filter group
+            if (jid === 'status@broadcast') {
+                await handleStatus(XeonBotInc, chatUpdate)
+                return
+            }
+
+            // ✅ Fix #2: Pengecualian untuk bot sendiri (fromMe & DM ke bot)
+            const isFromMe = mek.key.fromMe
+            const botJid = XeonBotInc.user?.id?.split(':')[0] + '@s.whatsapp.net'
+            const isBotDM = jid === botJid
+            const ALLOWED_GROUP = "120363427890723043@g.us"
+
+            // Izinkan: pesan dari bot sendiri, DM ke bot, atau dari group yang diizinkan
+            if (!isFromMe && !isBotDM && jid !== ALLOWED_GROUP) return
+
             mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-            if (mek.key && mek.key.remoteJid === 'status@broadcast') {
-                await handleStatus(XeonBotInc, chatUpdate);
-                return;
+
+            // In private mode, block DMs but allow group messages
+            if (!XeonBotInc.public && !isFromMe && chatUpdate.type === 'notify') {
+                const isGroup = jid?.endsWith('@g.us')
+                if (!isGroup) return
             }
-            // In private mode, only block non-group messages (allow groups for moderation)
-            // Note: XeonBotInc.public is not synced, so we check mode in main.js instead
-            // This check is kept for backward compatibility but mainly blocks DMs
-            if (!XeonBotInc.public && !mek.key.fromMe && chatUpdate.type === 'notify') {
-                const isGroup = mek.key?.remoteJid?.endsWith('@g.us')
-                if (!isGroup) return // Block DMs in private mode, but allow group messages
-            }
+
             if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
 
             // Clear message retry cache to prevent memory bloat
@@ -357,11 +370,7 @@ async function startXeonBotInc() {
         await handleGroupParticipantUpdate(XeonBotInc, update);
     });
 
-    XeonBotInc.ev.on('messages.upsert', async (m) => {
-        if (m.messages[0].key && m.messages[0].key.remoteJid === 'status@broadcast') {
-            await handleStatus(XeonBotInc, m);
-        }
-    });
+    // ✅ Fix #3: Listener messages.upsert duplikat dihapus — sudah ditangani di atas
 
     XeonBotInc.ev.on('status.update', async (status) => {
         await handleStatus(XeonBotInc, status);
